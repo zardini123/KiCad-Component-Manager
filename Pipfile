@@ -5,6 +5,7 @@ name = "pypi"
 
 [packages]
 kiutils = "*"
+click = "*"
 
 [dev-packages]
 autopep8 = "*"
