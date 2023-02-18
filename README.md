@@ -2,6 +2,36 @@
 
 [Library Loader](https://www.samacsys.com/library-loader/)
 
+## How to use
+
+- Quit KiCad
+  - Once symbol and footprint libraries are loaded, they seem to persist until end of session
+- Import part
+  - Run @TODO
+- Upgrade symbol libraries to modern format
+  - Open KiCad
+  - Enter KiCad Symbol Editor
+  - If any errors regarding `.lib` files, open files referenced in error in a text editor and fix manually
+    - Open `Preferences > Manage Symbol Libraries...` and press OK to attempt reimport again to see if more errors
+    - Any changes to entires will not be saved until errors are fixed
+  - Once errors are fixed (if any), open `Preferences > Manage Symbol Libraries...` and go to "Project Specific Libraries" tab
+  - Find all entries starting with "LEGACY_" in the nickname
+    - One at a time, click the entry and press "Migrate Libraries" button
+  - Press OK to save library entries
+  - Quit KiCad
+- Merge migrated library
+  - Run @TODO
+
+## To view 3D model link of footprints
+
+- Go to Footprint Editor
+- Search for footprint and select to view
+- Click "Edit footprint properties"
+- Click tab "3D Models"
+- Properly loaded models should have no red error sign left of its entry and should be viewable in "Preview" view.
+
+## Background
+
 As of currently, _Component Search Engine_ provides the component in the following KiCad formats:
 - Legacy (KiCad < 6.0) ([format documentations](https://dev-docs.kicad.org/en/file-formats/legacy-4-to-6/legacy_file_format_documentation.pdf)):
   - footprint (_.mod_)
@@ -89,3 +119,8 @@ Printed:
 ```python
 [('wxPython', '4.1.1'), ('wheel', '0.38.4'), ('urllib3', '1.26.13'), ('six', '1.16.0'), ('setuptools', '41.2.0'), ('requests', '2.28.1'), ('pip', '19.2.3'), ('idna', '3.4'), ('charset-normalizer', '2.1.1'), ('certifi', '2022.12.7')]
 ```
+
+## Current KiUtil issues
+
+- KiCad rejects fresh (new) footprint files from KiUtils as version number is "None", not a date.
+- 

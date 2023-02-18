@@ -152,7 +152,7 @@ pcb_footprints_folder = Path("footprints")
 schematic_symbols_folder = Path("symbols")
 
 LEGACY_PREFIX = "LEGACY"
-KICAD_PROJECT_ENVIROMENT_VARIABLE = "${KIPRJMOD}"
+KICAD_PROJECT_ENV_VAR = "${KIPRJMOD}"
 
 
 class ComponentData(Enum):
@@ -373,13 +373,13 @@ def find_libray_with_nickname(nickname: str, library_table: kiutils.libraries.Li
     return None
 
 
-def ensure_library_entry(nickname: str, library_table: kiutils.libraries.LibTable, part_container: Path, legacy=False) -> kiutils.libraries.Library:
+def ensure_library_entry(library_table: kiutils.libraries.LibTable, part_container: Path, nickname: str, legacy=False) -> kiutils.libraries.Library:
     lib = find_libray_with_nickname(nickname, library_table)
 
     if lib is None:
         lib = kiutils.libraries.Library(
             name=nickname,
-            uri=KICAD_PROJECT_ENVIROMENT_VARIABLE / part_container
+            uri=KICAD_PROJECT_ENV_VAR / part_container
         )
         if legacy:
             lib.type = "Legacy"
@@ -400,7 +400,7 @@ def get_footprint_library_table(project_folder: Path) -> Path:
     return project_folder / 'fp-lib-table'
 
 
-def import_parts(new_parts_zip_path: Path, project_folder: Path, group: str, part_category: str):
+def import_parts(new_parts_zip_path: Path, project_folder: Path, group: str):
     # Get part files from .zip
     #   In KiCad folder:
     #       POOR ASSUMPTION: footprints/symbol only have one of each in them
@@ -441,22 +441,28 @@ def import_parts(new_parts_zip_path: Path, project_folder: Path, group: str, par
             group, part_category, ComponentData.LEGACY_SCHEMATIC
         )
 
+        footprint_file_path = project_folder / \
+            footprint_container_path / f'{part_number}.kicad_mod'
+
+        # Merge legacy symbol library
         legacy_file = LegacySymbolLibrary.from_file(
             project_folder / legacy_symbol_container_path
         )
+
         final_legacy_file = legacy_file.merge(
             LegacySymbolLibrary.from_str(
                 part_dict['legacy_schematic_symbol_file'])
         )
 
-        # Check for duplicates of files in folder MODELS and PCB
-        #   If duplicates, throw error
-        # @TODO:
+        # Check for duplicate of footprint file
+        if footprint_file_path.is_file():
+            raise Exception(f"Footprint of {part_number} already exists!")
 
-        # Check for duplicate symbol in legacy symbol library SYMBOL
+        # @TODO: Check for duplicates of files in models folder
+         #   If duplicate, throw error
+
+        # @TODO: Check for duplicate symbol in legacy symbol library SYMBOL
         #   If duplicate, throw error
-        #   Else, merge legacy symbol library in memory
-        # @TODO:
 
         part_footprint_string = part_dict['pcb_footprint_file']
 
@@ -482,7 +488,7 @@ def import_parts(new_parts_zip_path: Path, project_folder: Path, group: str, par
 
             # Change footprint model directory
             model_entry.path = \
-                KICAD_PROJECT_ENVIROMENT_VARIABLE / \
+                KICAD_PROJECT_ENV_VAR / \
                 models_container_path / part_number / model_filename
 
         footprint_table_path = get_footprint_library_table(project_folder)
@@ -497,35 +503,35 @@ def import_parts(new_parts_zip_path: Path, project_folder: Path, group: str, par
         )
 
         # Ensure library entries of:
-        #   -
+        #   - Footprint (.pretty)
+        #   - Symbol (.kicad_sym)
+        #   - Legacy symbol (.lib)
         # @TODO: Logging of if entries were already present or not
         library_nickname = get_library_nickname(group, part_category)
 
+        # Ensure footprint
         ensure_library_entry(
-            library_nickname, footprint_table, footprint_container_path
+            footprint_table, footprint_container_path, library_nickname
         )
 
         # @TODO: Contact KiUtils developers to have default version number so
         #   fresh symbol files can be imported
         ensure_library_entry(
-            library_nickname, symbol_table, symbol_container_path
+            symbol_table, symbol_container_path, library_nickname
         )
 
         legacy_library_nickname = get_legacy_library_nickname(
             group, part_category
         )
         ensure_library_entry(
-            legacy_library_nickname,
             symbol_table,
             legacy_symbol_container_path,
+            legacy_library_nickname,
             legacy=True
         )
 
-        print(footprint_table)
-        print(symbol_table)
-
         # Save to PCB folder
-        with open(project_folder / footprint_container_path / f'{part_number}.kicad_mod', 'w') as footprint_file:
+        with open(footprint_file_path, 'w') as footprint_file:
             footprint_file.write(part_footprint_kiutils.to_sexpr())
 
         # Add MODEL files to 3d folder
@@ -583,4 +589,80 @@ def import_parts(new_parts_zip_path: Path, project_folder: Path, group: str, par
 
 def merge_newly_migrated_symbol_libraries(project_folder: Path, group: str):
     symbol_library_table_path = get_symbol_library_table(project_folder)
-    symbol_library_table = kiutils.libraries.LibTable.from_file(project_folder)
+    symbol_library_table = kiutils.libraries.LibTable.from_file(
+        symbol_library_table_path)
+
+    # Find all library entries that have been converted to modern library:
+    #   - legacy prefix in nickname
+    #   - are type KiCad
+    #   - have .kicad_sym file extension
+    migrated_libs = []
+
+    for symbol_lib in symbol_library_table.libs:
+        prefix_part = symbol_lib.name[:len(LEGACY_PREFIX)]
+
+        has_legacy_prefix = prefix_part == LEGACY_PREFIX
+        is_type_kicad = symbol_lib.type == 'KiCad'
+        has_modern_extension = Path(symbol_lib.uri).suffix == ".kicad_sym"
+
+        if has_legacy_prefix and is_type_kicad and has_modern_extension:
+            migrated_libs.append(symbol_lib)
+
+    if len(migrated_libs) == 0:
+        raise Exception("No migrated symbol libraries found!")
+
+    # For each converted lib, find existing modern sym library entry without
+    #   legacy extension and merge both libs
+    nicknames_to_delete = set()
+
+    for migrated_lib_entry in migrated_libs:
+        matching_lib_found = False
+        for modern_lib_entry in symbol_library_table.libs:
+            non_legacy_name = migrated_lib_entry.name[len(LEGACY_PREFIX) + 1:]
+
+            if non_legacy_name == modern_lib_entry.name:
+                migrated_lib_path = project_folder / \
+                    Path(migrated_lib_entry.uri).relative_to(
+                        KICAD_PROJECT_ENV_VAR)
+                modern_lib_path = project_folder / \
+                    Path(modern_lib_entry.uri).relative_to(
+                        KICAD_PROJECT_ENV_VAR)
+
+                migrated_lib = kiutils.symbol.SymbolLib.from_file(
+                    migrated_lib_path
+                )
+                modern_lib = kiutils.symbol.SymbolLib.from_file(
+                    modern_lib_path
+                )
+
+                # Merge two symbol libraries
+                modern_lib.symbols += migrated_lib.symbols
+
+                # Mark migrated library to be removed from library table
+                nicknames_to_delete.add(migrated_lib_entry.name)
+
+                # Save symbol library
+                modern_lib.to_file()
+
+                # Delete legacy library file (.lib)
+                migrated_lib_path.with_suffix('.lib').unlink()
+                # Delete migrated library file (.kicad_sym)
+                migrated_lib_path.unlink()
+
+                matching_lib_found = True
+
+                continue
+
+        if not matching_lib_found:
+            raise Exception(
+                f"No modern matching symbol library to {migrated_lib_entry.name} is found!"
+            )
+
+    # Remove all marked library table entries
+    for nickname_to_delete in nicknames_to_delete:
+        for symbol_lib_entry in symbol_library_table.libs:
+            if symbol_lib_entry.name == nickname_to_delete:
+                symbol_library_table.libs.remove(symbol_lib_entry)
+
+    # Save symbol library table
+    symbol_library_table.to_file()
