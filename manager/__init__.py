@@ -441,7 +441,7 @@ def import_parts(new_parts_zip_path: Path, project_folder: Path, group: str):
             group, part_category, ComponentData.LEGACY_SCHEMATIC
         )
 
-        footprint_file_path = project_folder / \
+        output_footprint_file_path = project_folder / \
             footprint_container_path / f'{part_number}.kicad_mod'
 
         # Merge legacy symbol library
@@ -455,7 +455,7 @@ def import_parts(new_parts_zip_path: Path, project_folder: Path, group: str):
         )
 
         # Check for duplicate of footprint file
-        if footprint_file_path.is_file():
+        if output_footprint_file_path.is_file():
             raise Exception(f"Footprint of {part_number} already exists!")
 
         # @TODO: Check for duplicates of files in models folder
@@ -467,13 +467,19 @@ def import_parts(new_parts_zip_path: Path, project_folder: Path, group: str):
         part_footprint_string = part_dict['pcb_footprint_file']
 
         # Read PCB file string into Footprint object
-        #   From: https://github.com/mvnmgrx/kiutils/blob/63c57a7697e453829482fd04dfccc11fa9cc9e74/src/kiutils/footprint.py#L861
+        #   ComponentSearchEngine's .kicad_mod files are intended for prior to
+        #       KiCad 6, as the footprint's first token was "module"
+        #       instead of "footprint"
+        #   Use KiUtils to upgrade to newer version by loading file
         part_footprint_sexpr = kiutils.utils.sexpr.parse_sexp(
             part_footprint_string
         )
         part_footprint_kiutils = kiutils.footprint.Footprint.from_sexpr(
             part_footprint_sexpr
         )
+        # Date is the day after last use of old fp_arc formatting
+        #   Source: https://gitlab.com/kicad/code/kicad/-/blob/master/pcbnew/plugins/kicad/pcb_plugin.h#L136
+        part_footprint_kiutils.version = "20210926"
 
         # Check to make sure .kicad_mod model entries points to file in new parts 3D models folder
         verify_model_entries(
@@ -531,7 +537,7 @@ def import_parts(new_parts_zip_path: Path, project_folder: Path, group: str):
         )
 
         # Save to PCB folder
-        with open(footprint_file_path, 'w') as footprint_file:
+        with open(output_footprint_file_path, 'w') as footprint_file:
             footprint_file.write(part_footprint_kiutils.to_sexpr())
 
         # Add MODEL files to 3d folder

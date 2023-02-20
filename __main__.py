@@ -1,11 +1,19 @@
 import sys
 import pathlib
 
-import kiutils.libraries
-import kiutils.footprint
 import click
 
+# autopep8: off
+KIUTILS_PATH = pathlib.Path(__file__).resolve().parents[1] / 'kiutils' / 'src'
+assert KIUTILS_PATH.is_dir()
+
+sys.path.append(str(KIUTILS_PATH))
+
+import kiutils.libraries
+import kiutils.footprint
+
 import manager
+# autopep8: on
 
 GROUP = "Extern"
 
@@ -39,8 +47,8 @@ def main():
     pass
 
 
-main.add_command(import_parts)
-main.add_command(merge_migrated_symbol_libraries)
+main.add_command(import_parts, "add")
+main.add_command(merge_migrated_symbol_libraries, "migrate")
 
 
 if __name__ == '__main__':
