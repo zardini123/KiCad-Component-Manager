@@ -6,8 +6,7 @@
 
 - Quit KiCad
   - Once symbol and footprint libraries are loaded, they seem to persist until end of session
-- Import part
-  - Run @TODO
+- Import part by running `add` command
 - Upgrade symbol libraries to modern format
   - Open KiCad
   - Enter KiCad Symbol Editor
@@ -19,8 +18,17 @@
     - One at a time, click the entry and press "Migrate Libraries" button
   - Press OK to save library entries
   - Quit KiCad
-- Merge migrated library
-  - Run @TODO
+- Merge migrated library by running `post-migrate` command
+- Open KiCad and enjoy!
+
+## What it does
+
+- `add`:
+  - @TODO
+- `merge`:
+  - Modifies the new symbol's "Footprint" property to point to its footprint
+  - @TODO
+
 
 ## To view 3D model link of footprints
 
@@ -119,8 +127,3 @@ Printed:
 ```python
 [('wxPython', '4.1.1'), ('wheel', '0.38.4'), ('urllib3', '1.26.13'), ('six', '1.16.0'), ('setuptools', '41.2.0'), ('requests', '2.28.1'), ('pip', '19.2.3'), ('idna', '3.4'), ('charset-normalizer', '2.1.1'), ('certifi', '2022.12.7')]
 ```
-
-## Current KiUtil issues
-
-- KiCad rejects fresh (new) footprint files from KiUtils as version number is "None", not a date.
-- 

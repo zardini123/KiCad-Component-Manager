@@ -42,13 +42,26 @@ def merge_migrated_symbol_libraries(kicad_project_folder):
     manager.merge_newly_migrated_symbol_libraries(kicad_project_folder, GROUP)
 
 
+@click.command()
+@kicad_project_folder_option
+@click.argument('part_name', type=str)
+@click.argument('part_category', type=str)
+def new_part(kicad_project_folder, part_name, part_category):
+    kicad_project_folder = pathlib.Path(kicad_project_folder)
+
+    manager.new_part(
+        kicad_project_folder, part_name, part_category, GROUP
+    )
+
+
 @click.group()
 def main():
     pass
 
 
 main.add_command(import_parts, "add")
-main.add_command(merge_migrated_symbol_libraries, "migrate")
+main.add_command(merge_migrated_symbol_libraries, "post-migrate")
+main.add_command(new_part, "new")
 
 
 if __name__ == '__main__':

@@ -24,20 +24,20 @@ class LegacySymbol:
 
     @classmethod
     def from_str(cls, symbol_as_string):
-        object = cls()
+        out = cls()
 
-        name_match = object.__name_regex.search(symbol_as_string)
+        name_match = out.__name_regex.search(symbol_as_string)
 
         if name_match:
-            object.name = name_match.group(0)
+            out.name = name_match.group(0)
 
             rest_of_file_index = name_match.end()
-            object.rest_of_file = symbol_as_string[rest_of_file_index:]
+            out.rest_of_file = symbol_as_string[rest_of_file_index:]
         else:
             # @TODO: error on no name
             pass
 
-        return object
+        return out
 
     def to_str(self) -> str:
         return f"DEF {self.name} {self.rest_of_file}"
@@ -69,13 +69,13 @@ class LegacySymbolLibrary:
 
     @classmethod
     def from_str(cls, library_as_string: str):
-        object = cls()
+        out = cls()
 
-        matches = object.__component_regex.findall(library_as_string)
+        matches = out.__component_regex.findall(library_as_string)
 
-        object.symbols = [LegacySymbol().from_str(match) for match in matches]
+        out.symbols = [LegacySymbol().from_str(match) for match in matches]
 
-        return object
+        return out
 
     def to_str(self) -> str:
         return self.__prefix + '\n'.join(symbol.to_str() for symbol in self.symbols) + self.__suffix
@@ -87,6 +87,7 @@ class LegacySymbolLibrary:
             return file.write(self_as_string)
 
     def merge(self, other):
+        # @TODO: Check duplicate names
         return LegacySymbolLibrary(self.symbols + other.symbols)
 
 
@@ -178,7 +179,7 @@ def get_legacy_library_nickname(group: str, part_category: str):
     return f"{LEGACY_PREFIX}_{group}_{part_category}"
 
 
-def get_library_container(group: str, part_category: str, data_selection: ComponentData):
+def get_library_container(part_number: str, group: str, part_category: str, data_selection: ComponentData):
     assert group != ""
 
     part_base_folder = parts_folder / group
@@ -189,27 +190,26 @@ def get_library_container(group: str, part_category: str, data_selection: Compon
     #   legacy symbols: group.lib file
     # Folder name extensions taken from KiCad's own built-in libraries
     if data_selection == ComponentData.MODEL:
-        return (part_base_folder / models_3d_folder / f"{part_category}.3dshapes", False)
-    elif data_selection == ComponentData.PCB:
+        return (part_base_folder / models_3d_folder / f"{part_category}.3dshapes" / part_number, False)
+    if data_selection == ComponentData.PCB:
         return (part_base_folder / pcb_footprints_folder / f"{part_category}.pretty", False)
-    elif data_selection == ComponentData.SCHEMATIC:
+    if data_selection == ComponentData.SCHEMATIC:
         return (part_base_folder / schematic_symbols_folder / f"{part_category}.kicad_sym", True)
-    elif data_selection == ComponentData.LEGACY_SCHEMATIC:
+    if data_selection == ComponentData.LEGACY_SCHEMATIC:
         return (part_base_folder / schematic_symbols_folder / f"{LEGACY_PREFIX}_{part_category}.lib", True)
 
     # If execution gets here, a possibiliy of ComponentData was not implemented above
     assert False
 
 
-def ensure_part_containers(project_folder: Path, group: str, part_category: str):
+def ensure_part_containers(project_folder: Path, part_number: str, group: str, part_category: str, include_legacy=False):
     for data_selection in ComponentData:
-        # @HACK: Contact KiUtils developers to set version number default so KiCad can import
-        #   fresh schematic files
-        # if data_selection == ComponentData.SCHEMATIC:
-        #     continue
+        # Skip legacy if directed not to include it
+        if (not include_legacy) and (data_selection == ComponentData.LEGACY_SCHEMATIC):
+            continue
 
         container, is_file = get_library_container(
-            group, part_category, data_selection
+            part_number, group, part_category, data_selection
         )
         container = project_folder / container
 
@@ -238,8 +238,8 @@ def is_relative_to(path, base_path):
 
 
 def read_file_in_zip(zip_file, file_in_zip):
-    with zip_file.open(file_in_zip) as file_in_zip:
-        file_content = file_in_zip.read()
+    with zip_file.open(file_in_zip) as file:
+        file_content = file.read()
 
     return file_content
 
@@ -422,23 +422,23 @@ def import_parts(new_parts_zip_path: Path, project_folder: Path, group: str):
 
         # @TODO: Do not create folders until finish without errors
         ensure_part_containers(
-            project_folder, group, part_category
+            project_folder, part_number, group, part_category, include_legacy=True
         )
 
         ####################################
         # Merge new part into libraries and folders/files
 
         models_container_path, _ = get_library_container(
-            group, part_category, ComponentData.MODEL
+            part_number, group, part_category, ComponentData.MODEL
         )
         footprint_container_path, _ = get_library_container(
-            group, part_category, ComponentData.PCB
+            part_number, group, part_category, ComponentData.PCB
         )
         symbol_container_path, _ = get_library_container(
-            group, part_category, ComponentData.SCHEMATIC
+            part_number, group, part_category, ComponentData.SCHEMATIC
         )
         legacy_symbol_container_path, _ = get_library_container(
-            group, part_category, ComponentData.LEGACY_SCHEMATIC
+            part_number, group, part_category, ComponentData.LEGACY_SCHEMATIC
         )
 
         output_footprint_file_path = project_folder / \
@@ -495,7 +495,7 @@ def import_parts(new_parts_zip_path: Path, project_folder: Path, group: str):
             # Change footprint model directory
             model_entry.path = \
                 KICAD_PROJECT_ENV_VAR / \
-                models_container_path / part_number / model_filename
+                models_container_path / model_filename
 
         footprint_table_path = get_footprint_library_table(project_folder)
         symbol_table_path = get_symbol_library_table(project_folder)
@@ -541,11 +541,8 @@ def import_parts(new_parts_zip_path: Path, project_folder: Path, group: str):
             footprint_file.write(part_footprint_kiutils.to_sexpr())
 
         # Add MODEL files to 3d folder
-        (
-            project_folder / models_container_path / part_number
-        ).mkdir(parents=True, exist_ok=True)
         for model_filename, model_file_string in part_dict['3d_model_files']:
-            with open(project_folder / models_container_path / part_number / model_filename, 'wb') as model_file:
+            with open(project_folder / models_container_path / model_filename, 'wb') as model_file:
                 model_file.write(model_file_string)
 
         # Save merged legacy symbol library to file
@@ -590,8 +587,6 @@ def import_parts(new_parts_zip_path: Path, project_folder: Path, group: str):
         #   transaction in the event of a consistency violation by an illegal
         #   transaction."
 
-    pass
-
 
 def merge_newly_migrated_symbol_libraries(project_folder: Path, group: str):
     symbol_library_table_path = get_symbol_library_table(project_folder)
@@ -620,6 +615,8 @@ def merge_newly_migrated_symbol_libraries(project_folder: Path, group: str):
     # For each converted lib, find existing modern sym library entry without
     #   legacy extension and merge both libs
     nicknames_to_delete = set()
+    files_to_delete = set()
+    modern_libs_to_save = []
 
     for migrated_lib_entry in migrated_libs:
         matching_lib_found = False
@@ -641,19 +638,27 @@ def merge_newly_migrated_symbol_libraries(project_folder: Path, group: str):
                     modern_lib_path
                 )
 
+                # Set "Footprint" property of new symbols to ensure symbol points to footprint
+                #   https://dev-docs.kicad.org/en/file-formats/sexpr-intro/index.html#_library_identifier
+                for symbol in migrated_lib.symbols:
+                    for sym_property in symbol.properties:
+                        if sym_property.key == "Footprint":
+                            sym_property.value = f'{non_legacy_name}:{symbol.entryName}'
+
                 # Merge two symbol libraries
+                # @TODO: Check duplicate names
                 modern_lib.symbols += migrated_lib.symbols
 
                 # Mark migrated library to be removed from library table
                 nicknames_to_delete.add(migrated_lib_entry.name)
 
                 # Save symbol library
-                modern_lib.to_file()
+                modern_libs_to_save.append(modern_lib)
 
                 # Delete legacy library file (.lib)
-                migrated_lib_path.with_suffix('.lib').unlink()
+                files_to_delete.add(migrated_lib_path.with_suffix('.lib'))
                 # Delete migrated library file (.kicad_sym)
-                migrated_lib_path.unlink()
+                files_to_delete.add(migrated_lib_path)
 
                 matching_lib_found = True
 
@@ -670,5 +675,80 @@ def merge_newly_migrated_symbol_libraries(project_folder: Path, group: str):
             if symbol_lib_entry.name == nickname_to_delete:
                 symbol_library_table.libs.remove(symbol_lib_entry)
 
+    # Delete all files to delete
+    for file_to_delete in files_to_delete:
+        file_to_delete.unlink()
+
+    # Save symbol libraries
+    for modern_lib in modern_libs_to_save:
+        modern_lib.to_file()
+
     # Save symbol library table
     symbol_library_table.to_file()
+
+
+def new_part(project_folder: Path, part_number: str, part_category: str, group: str):
+
+    ensure_part_containers(project_folder, part_number, group, part_category)
+
+    # Add blank symbol
+    symbol_library_path, _ = get_library_container(
+        part_number, group, part_category, ComponentData.SCHEMATIC
+    )
+
+    # @TODO: Unitize this
+    library_nickname = get_library_nickname(group, part_category)
+    library_link = f'{library_nickname}:{part_number}'
+
+    symbol_library = kiutils.symbol.SymbolLib.from_file(
+        project_folder / symbol_library_path
+    )
+    new_part_symbol = kiutils.symbol.Symbol.create_new(
+        id=library_link,
+        value=part_number,
+        reference=part_number,
+        footprint=library_link
+    )
+    # @TODO: Check for duplicate part numbers
+    symbol_library.symbols.append(new_part_symbol)
+
+    # Add blank footprint
+    footprint_library_path, _ = get_library_container(
+        part_number, group, part_category, ComponentData.PCB
+    )
+
+    new_part_footprint = kiutils.footprint.Footprint.create_new(
+        library_link=library_link,
+        value=part_number
+    )
+
+    # Add to library tables
+    # @TODO: Unitize this
+    # @FIXME: Duplicate code
+    footprint_table_path = get_footprint_library_table(project_folder)
+    symbol_table_path = get_symbol_library_table(project_folder)
+
+    footprint_table = get_library_table_else_new(
+        'fp_lib_table', footprint_table_path
+    )
+    symbol_table = get_library_table_else_new(
+        'sym_lib_table', symbol_table_path
+    )
+
+    # Ensure footprint
+    ensure_library_entry(
+        footprint_table, footprint_library_path, library_nickname
+    )
+
+    ensure_library_entry(
+        symbol_table, symbol_library_path, library_nickname
+    )
+
+    # Commit additions
+    symbol_library.to_file()
+    new_part_footprint.to_file(
+        project_folder / footprint_library_path / f'{part_number}.kicad_mod'
+    )
+
+    footprint_table.to_file()
+    symbol_table.to_file()
