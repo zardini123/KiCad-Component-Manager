@@ -722,6 +722,8 @@ def new_part(project_folder: Path, part_number: str, part_category: str, group: 
         value=part_number
     )
 
+    # @TODO: Set a model entry to the model container folder (but no file)
+
     # Add to library tables
     # @TODO: Unitize this
     # @FIXME: Duplicate code
