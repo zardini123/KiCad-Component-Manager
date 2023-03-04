@@ -101,7 +101,7 @@ class Part:
     version: Tuple[int, int, int] = (-1, -1, -1)
     released: Optional[datetime] = None
     downloaded: Optional[datetime] = None
-    three_d: str = ""
+    has_3d_model: bool = False
 
     __camel_case = re.compile(r'(?<!^)(?=[A-Z])')
 
@@ -112,8 +112,14 @@ class Part:
             entry.split("=") for entry in part_info_file_contents.splitlines()
         )
 
-        # Special name changing
-        part_info_dict['three_d'] = part_info_dict.pop('3D')
+        # Check if 3D model is present
+        model_field = part_info_dict.pop('3D')
+        if model_field == 'Y':
+            part_info_dict['has_3d_model'] = True
+        elif model_field == 'N':
+            part_info_dict['has_3d_model'] = False
+        else:
+            raise Exception("Unknown '3D' option found in part_info.txt")
 
         # Part info text file keys in camel case.  Convert to snake case
         #   Conversion source: https://stackoverflow.com/a/1176023/6183001
@@ -481,21 +487,22 @@ def import_parts(new_parts_zip_path: Path, project_folder: Path, group: str):
         #   Source: https://gitlab.com/kicad/code/kicad/-/blob/master/pcbnew/plugins/kicad/pcb_plugin.h#L136
         part_footprint_kiutils.version = "20210926"
 
-        # Check to make sure .kicad_mod model entries points to file in new parts 3D models folder
-        verify_model_entries(
-            part_dict['3d_model_files'], part_footprint_kiutils.models
-        )
+        if part_metadata.has_3d_model:
+            # Check to make sure .kicad_mod model entries points to file in new parts 3D models folder
+            verify_model_entries(
+                part_dict['3d_model_files'], part_footprint_kiutils.models
+            )
 
-        # Modify footprint model in memory to point to parts folder
-        #   https://kiutils.readthedocs.io/en/latest/module/kiutils.html#kiutils.footprint.Footprint.models
-        #   part_footprint_kiutils.models
-        for model_entry in part_footprint_kiutils.models:
-            model_filename = Path(model_entry.path).name
+            # Modify footprint model in memory to point to parts folder
+            #   https://kiutils.readthedocs.io/en/latest/module/kiutils.html#kiutils.footprint.Footprint.models
+            #   part_footprint_kiutils.models
+            for model_entry in part_footprint_kiutils.models:
+                model_filename = Path(model_entry.path).name
 
-            # Change footprint model directory
-            model_entry.path = \
-                KICAD_PROJECT_ENV_VAR / \
-                models_container_path / model_filename
+                # Change footprint model directory
+                model_entry.path = \
+                    KICAD_PROJECT_ENV_VAR / \
+                    models_container_path / model_filename
 
         footprint_table_path = get_footprint_library_table(project_folder)
         symbol_table_path = get_symbol_library_table(project_folder)
@@ -540,10 +547,11 @@ def import_parts(new_parts_zip_path: Path, project_folder: Path, group: str):
         with open(output_footprint_file_path, 'w') as footprint_file:
             footprint_file.write(part_footprint_kiutils.to_sexpr())
 
-        # Add MODEL files to 3d folder
-        for model_filename, model_file_string in part_dict['3d_model_files']:
-            with open(project_folder / models_container_path / model_filename, 'wb') as model_file:
-                model_file.write(model_file_string)
+        if part_metadata.has_3d_model:
+            # Add MODEL files to 3d folder
+            for model_filename, model_file_string in part_dict['3d_model_files']:
+                with open(project_folder / models_container_path / model_filename, 'wb') as model_file:
+                    model_file.write(model_file_string)
 
         # Save merged legacy symbol library to file
         with open(project_folder / legacy_symbol_container_path, 'w') as legacy_file:
