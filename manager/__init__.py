@@ -651,7 +651,7 @@ def merge_newly_migrated_symbol_libraries(project_folder: Path, group: str):
                 for symbol in migrated_lib.symbols:
                     for sym_property in symbol.properties:
                         if sym_property.key == "Footprint":
-                            sym_property.value = f'{non_legacy_name}:{symbol.entryName}'
+                            sym_property.value = f'{non_legacy_name}:{symbol.id}'
 
                 # Merge two symbol libraries
                 # @TODO: Check duplicate names
