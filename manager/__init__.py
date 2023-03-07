@@ -421,7 +421,13 @@ def import_parts(new_parts_zip_path: Path, project_folder: Path, group: str):
     for part_dict in new_parts:
         part_metadata = part_dict['part_metadata']
         part_number = part_metadata.part_number
-        part_category = part_metadata.part_category.replace(' ', '_')
+
+        # Remove non alpha-numeric and not whitespace
+        part_category = re.sub(
+            r'[^\s\-a-zA-Z0-9]', '', part_metadata.part_category
+        )
+        part_category = part_category.replace(' ', '_')
+        part_category = part_category.replace('-', '_')
 
         ####################################
         # Ensure containers
