@@ -4,10 +4,12 @@ import pathlib
 import click
 
 # autopep8: off
-KIUTILS_PATH = pathlib.Path(__file__).resolve().parents[1] / 'kiutils' / 'src'
-assert KIUTILS_PATH.is_dir()
 
-sys.path.append(str(KIUTILS_PATH))
+# Manual inclusion of kiutils repository
+# KIUTILS_PATH = pathlib.Path(__file__).resolve().parents[1] / 'kiutils' / 'src'
+# assert KIUTILS_PATH.is_dir()
+# 
+# sys.path.append(str(KIUTILS_PATH))
 
 import kiutils.libraries
 import kiutils.footprint

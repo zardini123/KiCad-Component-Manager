@@ -5,6 +5,7 @@ name = "pypi"
 
 [packages]
 click = "*"
+kiutils = {git = "https://github.com/mvnmgrx/kiutils"}
 
 [dev-packages]
 autopep8 = "*"
