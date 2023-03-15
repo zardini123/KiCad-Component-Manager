@@ -1,8 +1,33 @@
 # KiCad Component Manager
 
-[Library Loader](https://www.samacsys.com/library-loader/)
+## Setup KiCad Component Manager
 
-## How to use
+1. Clone KiCad Component Manager to your directory of choosing:
+```bash
+git clone https://github.com/zardini123/KiCad-Component-Manager.git
+```
+
+2. Enter cloned repository directory:
+```bash
+cd KiCad-Component-Manager
+```
+
+3. KiCad Component Manager uses `pipenv` for Python version and package management.  Go to [Pipenv docs for installing pipenv](https://pipenv.pypa.io/en/latest/#install-pipenv-today) for more information of ways to install pipenv.
+
+4. Setup KiCad Component Manager's Python enviroment in cloned repository directory:
+```bash
+pipenv install
+```
+
+## Using KiCad Component Manager
+
+In the cloned repository directory, KiCad Component Manager is ran via:
+
+```bash
+pipenv run python3 -m manager
+```
+
+### To add a [Component Search Engine](https://componentsearchengine.com) part:
 
 - Quit KiCad
   - Once symbol and footprint libraries are loaded, they seem to persist until end of session
@@ -21,14 +46,7 @@
 - Merge migrated library by running `post-migrate` command
 - Open KiCad and enjoy!
 
-## What it does
-
-- `add`:
-  - @TODO
-- `merge`:
-  - Modifies the new symbol's "Footprint" property to point to its footprint
-  - @TODO
-
+---
 
 ## To view 3D model link of footprints
 
@@ -38,7 +56,17 @@
 - Click tab "3D Models"
 - Properly loaded models should have no red error sign left of its entry and should be viewable in "Preview" view.
 
+## What it does
+
+- `add`:
+  - @TODO
+- `merge`:
+  - Modifies the new symbol's "Footprint" property to point to its footprint
+  - @TODO
+
 ## Background
+
+[Library Loader](https://www.samacsys.com/library-loader/)
 
 As of currently, _Component Search Engine_ provides the component in the following KiCad formats:
 - Legacy (KiCad < 6.0) ([format documentations](https://dev-docs.kicad.org/en/file-formats/legacy-4-to-6/legacy_file_format_documentation.pdf)):
@@ -114,6 +142,8 @@ Install dev dependencies
 ```bash
 pipenv install --dev
 ```
+
+### Future: KiCad Plugin
 
 Determined provided pip packages by PCB Editor Python enviroment by running in Scripting Console ([source](https://stackoverflow.com/questions/739993/how-do-i-get-a-list-of-locally-installed-python-modules#comment66310778_23885252)):
 ```python
