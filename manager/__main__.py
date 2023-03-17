@@ -32,7 +32,7 @@ def kicad_project_folder_option(function):
 def add_parts(kicad_project_folder, zip_file):
     kicad_project_folder = pathlib.Path(kicad_project_folder)
 
-    utils.add_parts(zip_file, kicad_project_folder, GROUP)
+    utils.import_parts(zip_file, kicad_project_folder, GROUP)
 
     print(
         "Part has legacy symbol files.  Do the following to have them be editable:\n"
