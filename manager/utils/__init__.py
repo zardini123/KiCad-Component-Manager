@@ -250,6 +250,16 @@ def read_file_in_zip(zip_file, file_in_zip):
     return file_content
 
 
+def cse_file_name_sanitization(string_to_sanitize: str):
+    # CSE = Component Search Engine
+    out = string_to_sanitize
+    # Test parts: TLP292(TPL,E
+    out = out.replace('(', '_')
+    # Test parts: MCP1402T-E/OT
+    out = out.replace('/', '_')
+    return out
+
+
 def extract_part_data_zip(zip_file_path: Path):
     with zipfile.ZipFile(zip_file_path) as zip_file:
         # 1. Find all part_info.txt to get all part metadatas
@@ -274,7 +284,12 @@ def extract_part_data_zip(zip_file_path: Path):
         parts = []
 
         for part_metadata in parts_metadatas:
-            part_folder = Path(part_metadata.part_number)
+            sanitized_part_name = cse_file_name_sanitization(
+                part_metadata.part_number
+            )
+            part_folder = Path(sanitized_part_name)
+
+            # @TODO: Check if part_folder exists in zip_file
 
             model_files = set()
             pcb_footprint_file = None
@@ -406,6 +421,13 @@ def get_footprint_library_table(project_folder: Path) -> Path:
     return project_folder / 'fp-lib-table'
 
 
+def sanitize_for_filesystem(string_to_sanitize: str) -> str:
+    out = string_to_sanitize
+    # Test parts: MCP1402T-E/OT
+    out = out.replace('/', '_')
+    return out
+
+
 def import_parts(new_parts_zip_path: Path, project_folder: Path, group: str):
     # Get part files from .zip
     #   In KiCad folder:
@@ -421,6 +443,7 @@ def import_parts(new_parts_zip_path: Path, project_folder: Path, group: str):
     for part_dict in new_parts:
         part_metadata = part_dict['part_metadata']
         part_number = part_metadata.part_number
+        part_number_filesystem = sanitize_for_filesystem(part_number)
 
         # Remove non alpha-numeric and not whitespace
         part_category = re.sub(
@@ -434,37 +457,48 @@ def import_parts(new_parts_zip_path: Path, project_folder: Path, group: str):
 
         # @TODO: Do not create folders until finish without errors
         ensure_part_containers(
-            project_folder, part_number, group, part_category, include_legacy=True
+            project_folder, part_number_filesystem, group, part_category, include_legacy=True
         )
 
         ####################################
         # Merge new part into libraries and folders/files
 
         models_container_path, _ = get_library_container(
-            part_number, group, part_category, ComponentData.MODEL
+            part_number_filesystem, group, part_category, ComponentData.MODEL
         )
         footprint_container_path, _ = get_library_container(
-            part_number, group, part_category, ComponentData.PCB
+            part_number_filesystem, group, part_category, ComponentData.PCB
         )
         symbol_container_path, _ = get_library_container(
-            part_number, group, part_category, ComponentData.SCHEMATIC
+            part_number_filesystem, group, part_category, ComponentData.SCHEMATIC
         )
         legacy_symbol_container_path, _ = get_library_container(
-            part_number, group, part_category, ComponentData.LEGACY_SCHEMATIC
+            part_number_filesystem, group, part_category, ComponentData.LEGACY_SCHEMATIC
         )
 
-        output_footprint_file_path = project_folder / \
-            footprint_container_path / f'{part_number}.kicad_mod'
+        output_footprint_file_path = \
+            project_folder / \
+            footprint_container_path / \
+            f'{part_number_filesystem}.kicad_mod'
+
+        # Load legacy symbol library from zip
+        legacy_symbol = LegacySymbolLibrary.from_str(
+            part_dict['legacy_schematic_symbol_file']
+        )
+
+        # Oddly symbols in CSE have the sanitized part number whereas footprints
+        #   are full, original part number.
+        #   Change so both symbol and footprint is consistent.
+        # @FIXME: Use a `find` API to get symbol with name
+        legacy_symbol.symbols[0].name = part_number
 
         # Merge legacy symbol library
-        legacy_file = LegacySymbolLibrary.from_file(
+        legacy_symbol_library = LegacySymbolLibrary.from_file(
             project_folder / legacy_symbol_container_path
         )
 
-        final_legacy_file = legacy_file.merge(
-            LegacySymbolLibrary.from_str(
-                part_dict['legacy_schematic_symbol_file'])
-        )
+        final_legacy_symbol_library = \
+            legacy_symbol_library.merge(legacy_symbol)
 
         # Check for duplicate of footprint file
         if output_footprint_file_path.is_file():
@@ -492,6 +526,9 @@ def import_parts(new_parts_zip_path: Path, project_folder: Path, group: str):
         # Date is the day after last use of old fp_arc formatting
         #   Source: https://gitlab.com/kicad/code/kicad/-/blob/master/pcbnew/plugins/kicad/pcb_plugin.h#L136
         part_footprint_kiutils.version = "20210926"
+        # Ensure footprint name is of right name as some footprints have wrong name with CSE provider for some reason
+        # @TODO Test: MCP1402T-E/OT
+        part_footprint_kiutils.entryName = part_number
 
         if part_metadata.has_3d_model:
             # Check to make sure .kicad_mod model entries points to file in new parts 3D models folder
@@ -561,7 +598,7 @@ def import_parts(new_parts_zip_path: Path, project_folder: Path, group: str):
 
         # Save merged legacy symbol library to file
         with open(project_folder / legacy_symbol_container_path, 'w') as legacy_file:
-            legacy_file.write(final_legacy_file.to_str())
+            legacy_file.write(final_legacy_symbol_library.to_str())
 
         # Save library tables
         footprint_table.to_file()
@@ -605,7 +642,8 @@ def import_parts(new_parts_zip_path: Path, project_folder: Path, group: str):
 def merge_newly_migrated_symbol_libraries(project_folder: Path, group: str):
     symbol_library_table_path = get_symbol_library_table(project_folder)
     symbol_library_table = kiutils.libraries.LibTable.from_file(
-        symbol_library_table_path)
+        symbol_library_table_path
+    )
 
     # Find all library entries that have been converted to modern library:
     #   - legacy prefix in nickname
@@ -657,7 +695,11 @@ def merge_newly_migrated_symbol_libraries(project_folder: Path, group: str):
                 for symbol in migrated_lib.symbols:
                     for sym_property in symbol.properties:
                         if sym_property.key == "Footprint":
-                            sym_property.value = f'{non_legacy_name}:{symbol.entryName}'
+                            # KiCad has symbol point to its associated footprint where after the colon (:) is the footprint library FILENAME
+                            footprint_filename = sanitize_for_filesystem(
+                                symbol.entryName
+                            )
+                            sym_property.value = f'{non_legacy_name}:{footprint_filename}'
 
                 # Merge two symbol libraries
                 # @TODO: Check duplicate names

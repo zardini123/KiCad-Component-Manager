@@ -6,6 +6,7 @@ name = "pypi"
 [packages]
 click = "*"
 kiutils = {git = "https://github.com/mvnmgrx/kiutils"}
+python-dotenv = "*"
 
 [dev-packages]
 autopep8 = "*"
